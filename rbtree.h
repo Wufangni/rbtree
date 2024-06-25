@@ -151,6 +151,9 @@ struct rb_root
 };
 
 
+extern unsigned long rb_rotation_count;
+void reset_rb_rotation_count(void);
+
 #define rb_parent(r)   ((struct rb_node *)((r)->rb_parent_color & ~3))
 #define rb_color(r)   ((r)->rb_parent_color & 1)
 #define rb_is_red(r)   (!rb_color(r))

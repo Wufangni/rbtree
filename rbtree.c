@@ -38,50 +38,52 @@
 
 #include "rbtree.h"
 
-static void __rb_rotate_left(struct rb_node *node, struct rb_root *root)
-{
-	struct rb_node *right = node->rb_right;
-	struct rb_node *parent = rb_parent(node);
+unsigned long rb_rotation_count = 0;
 
-	if ((node->rb_right = right->rb_left))
-		rb_set_parent(right->rb_left, node);
-	right->rb_left = node;
-
-	rb_set_parent(right, parent);
-
-	if (parent)
-	{
-		if (node == parent->rb_left)
-			parent->rb_left = right;
-		else
-			parent->rb_right = right;
-	}
-	else
-		root->rb_node = right;
-	rb_set_parent(node, right);
+void reset_rb_rotation_count(void) {
+    rb_rotation_count = 0;
 }
 
-static void __rb_rotate_right(struct rb_node *node, struct rb_root *root)
-{
-	struct rb_node *left = node->rb_left;
-	struct rb_node *parent = rb_parent(node);
+static void __rb_rotate_left(struct rb_node *node, struct rb_root *root) {
+    rb_rotation_count++; // Increment rotation count
+    struct rb_node *right = node->rb_right;
+    struct rb_node *parent = rb_parent(node);
 
-	if ((node->rb_left = left->rb_right))
-		rb_set_parent(left->rb_right, node);
-	left->rb_right = node;
+    if ((node->rb_right = right->rb_left))
+        rb_set_parent(right->rb_left, node);
+    right->rb_left = node;
 
-	rb_set_parent(left, parent);
+    rb_set_parent(right, parent);
 
-	if (parent)
-	{
-		if (node == parent->rb_right)
-			parent->rb_right = left;
-		else
-			parent->rb_left = left;
-	}
-	else
-		root->rb_node = left;
-	rb_set_parent(node, left);
+    if (parent) {
+        if (node == parent->rb_left)
+            parent->rb_left = right;
+        else
+            parent->rb_right = right;
+    } else
+        root->rb_node = right;
+    rb_set_parent(node, right);
+}
+
+static void __rb_rotate_right(struct rb_node *node, struct rb_root *root) {
+    rb_rotation_count++; // Increment rotation count
+    struct rb_node *left = node->rb_left;
+    struct rb_node *parent = rb_parent(node);
+
+    if ((node->rb_left = left->rb_right))
+        rb_set_parent(left->rb_right, node);
+    left->rb_right = node;
+
+    rb_set_parent(left, parent);
+
+    if (parent) {
+        if (node == parent->rb_right)
+            parent->rb_right = left;
+        else
+            parent->rb_left = left;
+    } else
+        root->rb_node = left;
+    rb_set_parent(node, left);
 }
 
 void rb_insert_color(struct rb_node *node, struct rb_root *root)
