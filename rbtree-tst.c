@@ -9,6 +9,13 @@ double get_time_in_seconds(clock_t start, clock_t end) {
     return (double)(end - start) / CLOCKS_PER_SEC;
 }
 
+// Function to measure memory usage in kilobytes
+long get_memory_usage() {
+    struct rusage usage;
+    getrusage(RUSAGE_SELF, &usage);
+    return usage.ru_maxrss;
+}
+
 // Custom structure for nodes
 struct my_node {
     int key;
@@ -66,7 +73,7 @@ static void my_delete(struct rb_root *root, struct my_node *data) {
     free(data);
 }
 
-void generate_gnuplot_script(const char* time_data_filename, const char* rotation_data_filename, const char* time_script_filename, const char* rotation_script_filename) {
+void generate_gnuplot_script(const char* time_data_filename, const char* rotation_data_filename, const char* cache_data_filename, const char* time_script_filename, const char* rotation_script_filename, const char* cache_script_filename) {
     FILE* time_file = fopen(time_script_filename, "w");
     if (!time_file) {
         perror("Error opening file for writing");
@@ -104,14 +111,62 @@ void generate_gnuplot_script(const char* time_data_filename, const char* rotatio
     fprintf(rotation_file, "     '%s' using 1:4 title 'Deletion Rotations' with lines\n", rotation_data_filename);
 
     fclose(rotation_file);
+
+    FILE* cache_file = fopen(cache_script_filename, "w");
+    if (!cache_file) {
+        perror("Error opening file for writing");
+        return;
+    }
+
+    fprintf(cache_file, "set terminal pngcairo size 1280,960 enhanced font 'Verdana,10'\n");
+    fprintf(cache_file, "set output 'rbtree_performance_cache.png'\n");
+    fprintf(cache_file, "set title 'Red-Black Tree Performance (Cache)'\n");
+    fprintf(cache_file, "set xlabel 'Node Count'\n");
+    fprintf(cache_file, "set ylabel 'Cache Misses'\n");
+    fprintf(cache_file, "set key left top\n");
+    fprintf(cache_file, "set grid\n");
+    fprintf(cache_file, "plot '%s' using 1:2 title 'Insertion Cache Misses' with lines,\\\n", cache_data_filename);
+    fprintf(cache_file, "     '%s' using 1:3 title 'Search Cache Misses' with lines,\\\n", cache_data_filename);
+    fprintf(cache_file, "     '%s' using 1:4 title 'Deletion Cache Misses' with lines\n", cache_data_filename);
+
+    fclose(cache_file);
 }
+
+void run_perf_command(const char* command) {
+    int ret = system(command);
+    if (ret == -1) {
+        perror("Error running perf command");
+        exit(1);
+    }
+}
+
+void measure_cache_misses(const char* operation, int n, long* cache_misses) {
+    char command[256];
+    sprintf(command, "perf stat -e cache-misses ./rbtree-tst-perf-helper %s %d 2>&1 | grep 'cache-misses' | awk '{print $1}'", operation, n);
+
+    FILE* perf_output = popen(command, "r");
+    if (!perf_output) {
+        perror("Error running perf command");
+        exit(1);
+    }
+
+    char buffer[128];
+    if (fgets(buffer, sizeof(buffer), perf_output) != NULL) {
+        *cache_misses = atol(buffer);
+    } else {
+        *cache_misses = 0; // Default to 0 if parsing fails
+    }
+
+    pclose(perf_output);
+}
+
 
 int main() {
     struct rb_root tree = RB_ROOT;
     clock_t start, end;
-    int max_node_count = 250; // Increase the range for better analysis
-    int step_size = 10;
-    int iterations = 10; // Increase iterations for more stable results
+    int max_node_count = 5000; // Increase the range for better analysis
+    int step_size = 500;
+    int iterations = 25; // Increase iterations for more stable results
 
     // Print time results to a file
     FILE* time_file = fopen("rbtree_performance_time.dat", "w");
@@ -129,9 +184,18 @@ int main() {
     }
     fprintf(rotation_file, "# NodeCount InsertionRotations SearchRotations DeletionRotations\n");
 
+    // Print cache results to a file
+    FILE* cache_file = fopen("rbtree_performance_cache.dat", "w");
+    if (!cache_file) {
+        perror("Error opening file for writing");
+        return 1;
+    }
+    fprintf(cache_file, "# NodeCount InsertionCacheMisses SearchCacheMisses DeletionCacheMisses\n");
+
     for (int n = step_size; n <= max_node_count; n += step_size) {
         double total_insert_time = 0.0, total_delete_time = 0.0, total_search_time = 0.0;
         long total_insert_rotations = 0, total_search_rotations = 0, total_delete_rotations = 0;
+        long total_insert_cache_misses = 0, total_search_cache_misses = 0, total_delete_cache_misses = 0;
 
         for (int iter = 0; iter < iterations; iter++) {
             // Generate random keys
@@ -140,7 +204,7 @@ int main() {
                 keys[i] = rand() % 1000000;
             }
 
-            // Measure insertion time and rotations
+            // Measure insertion time, rotations, and cache misses
             for (int i = 0; i < n; i++) {
                 struct my_node *new_node = (struct my_node *)malloc(sizeof(struct my_node));
                 new_node->key = keys[i];
@@ -153,8 +217,11 @@ int main() {
                 total_insert_time += get_time_in_seconds(start, end);
                 total_insert_rotations += rb_rotation_count;
             }
+            long insert_cache_misses;
+            measure_cache_misses("insert", n, &insert_cache_misses);
+            total_insert_cache_misses += insert_cache_misses;
 
-            // Measure search time and rotations
+            // Measure search time, rotations, and cache misses
             for (int i = 0; i < n; i++) {
                 start = clock();
                 reset_rb_rotation_count();
@@ -164,8 +231,11 @@ int main() {
                 total_search_time += get_time_in_seconds(start, end);
                 total_search_rotations += rb_rotation_count; // This should typically be zero
             }
+            long search_cache_misses;
+            measure_cache_misses("search", n, &search_cache_misses);
+            total_search_cache_misses += search_cache_misses;
 
-            // Measure deletion time and rotations
+            // Measure deletion time, rotations, and cache misses
             for (int i = 0; i < n; i++) {
                 struct rb_node *node = my_search(&tree, keys[i]);
                 if (node) {
@@ -180,23 +250,29 @@ int main() {
                     total_delete_rotations += rb_rotation_count;
                 }
             }
+            long delete_cache_misses;
+            measure_cache_misses("delete", n, &delete_cache_misses);
+            total_delete_cache_misses += delete_cache_misses;
 
             free(keys);
         }
 
         fprintf(time_file, "%d %f %f %f\n", n, total_insert_time / iterations, total_search_time / iterations, total_delete_time / iterations);
         fprintf(rotation_file, "%d %ld %ld %ld\n", n, total_insert_rotations / iterations, total_search_rotations / iterations, total_delete_rotations / iterations);
+        fprintf(cache_file, "%d %ld %ld %ld\n", n, total_insert_cache_misses / iterations, total_search_cache_misses / iterations, total_delete_cache_misses / iterations);
     }
 
     fclose(time_file);
     fclose(rotation_file);
+    fclose(cache_file);
 
     // Generate the gnuplot scripts
-    generate_gnuplot_script("rbtree_performance_time.dat", "rbtree_performance_rotation.dat", "rbtree_performance_time.gnuplot", "rbtree_performance_rotation.gnuplot");
+    generate_gnuplot_script("rbtree_performance_time.dat", "rbtree_performance_rotation.dat", "rbtree_performance_cache.dat", "rbtree_performance_time.gnuplot", "rbtree_performance_rotation.gnuplot", "rbtree_performance_cache.gnuplot");
 
     // Call gnuplot to generate the graphs
     system("gnuplot rbtree_performance_time.gnuplot");
     system("gnuplot rbtree_performance_rotation.gnuplot");
+    system("gnuplot rbtree_performance_cache.gnuplot");
 
     return 0;
 }

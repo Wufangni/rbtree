@@ -1,18 +1,20 @@
-# Makefile content
 CC = gcc
 CFLAGS = -Wall -g
-OBJ = rbtree.o rbtree-tst.o
+OBJ = rbtree.o avlVSrb-tst.o avltree.o
 
-all: rbtree-tst
+all: avlVSrb-tst
 
-rbtree-tst: $(OBJ)
+avlVSrb-tst: $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 
 rbtree.o: rbtree.c rbtree.h
 	$(CC) $(CFLAGS) -c rbtree.c
 
-rbtree-tst.o: rbtree-tst.c rbtree.h
-	$(CC) $(CFLAGS) -c rbtree-tst.c
+avlVSrb-tst.o: avlVSrb-tst.c rbtree.h avltree.h
+	$(CC) $(CFLAGS) -c avlVSrb-tst.c
+
+avltree.o: avltree.c avltree.h
+	$(CC) $(CFLAGS) -c avltree.c
 
 clean:
-	rm -f *.o rbtree-tst rbtree_performance_time.dat rbtree_performance_rotation.dat rbtree_performance_time.gnuplot rbtree_performance_rotation.gnuplot rbtree_performance_time.png rbtree_performance_rotation.png
+	rm -f *.o avlVSrb-tst *.dat *.gnuplot *.png
